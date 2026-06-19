@@ -1,4 +1,4 @@
-### **Introduction**
+# Entity Resolution
 
 The dataset contains records describing various companies along with multiple business-related attributes. Although most records appear distinct, several of them may refer to the same **real-world company**. The objective of this project is to identify and group together records that belong to the same entity.
 
@@ -13,16 +13,15 @@ The **entity resolution pipeline** is structured into the following stages:
 7. **Graph-Based Clustering** – filtering high-scoring pairs and **grouping connected records** using a graph-based approach.  
 8. **Cluster Analysis and Visual Validation** – inspection of **resulting clusters** and presentation of **statistical distributions**.
 
-### Spark Setup
+## Spark Setup
 
 Although the provided dataset is not very large, **PySpark** was chosen to ensure **scalability** and to support efficient processing for significantly larger datasets. This approach allows the **entity resolution pipeline** to scale in a **distributed environment** if needed.
 
-### Dataset Inspection and Column Coverage
+## Dataset Inspection and Column Coverage
 
 At this stage, we inspect the **dataset schema** to understand its structure and the available attributes. We also analyze the **percentage of non-null values per column** in order to assess **data completeness**. In the following steps, we will primarily focus on columns that both **meaningfully describe the entity** and exhibit a **significant proportion of non-null values**.
 
 ```text
-
 DataFrame schema:
 root
  |-- company_name: string (nullable = true)
@@ -107,10 +106,6 @@ Columns: 75
 ```
 
 ```text
-[Stage 7:============================================>              (3 + 1) / 4]
-```
-
-```text
 Non-null percentage per column:
 status: 100.00%
 created_at: 99.87%
@@ -189,7 +184,7 @@ tiktok_url: 0.00%
 alexa_rank: 0.00%
 ```
 
-### Selecting Relevant Columns
+## Selecting Relevant Columns
 
 We retain only the columns that are relevant for **blocking**, **matching**, and **final cluster interpretation** in order to reduce noise and improve efficiency.
 
@@ -203,7 +198,6 @@ We retain only the columns that are relevant for **blocking**, **matching**, and
 This structured selection ensures that **blocking is efficient**, **matching is meaningful**, and the final clusters can be **clearly interpreted**.
 
 ```text
-
 DataFrame schema after retaining only the relevant columns:
 root
  |-- website_domain: string (nullable = true)
@@ -244,7 +238,7 @@ Rows: 33,446
 Columns: 32
 ```
 
-### Data Preprocessing and Normalization
+## Data Preprocessing and Normalization
 
 In the following section, we detail the **data preprocessing and normalization steps**. For clarity, we will use the below illustrated example record, which is extracted directly from the provided dataset:
 
@@ -358,7 +352,6 @@ From the social media URLs, we extract the **unique identifier (handle)** used b
 | youtube_url | https://www.youtube.com/c/180ChicagoChurch | 180chicagochurch |
 
 ```text
-
 Columns name_core (derived from website_domain, primary_email, company_name):
 --------- RECORD 1/10 ---------
 record_id                     : 8589934592
@@ -658,17 +651,16 @@ facebook_url                  : https://www.facebook.com/drakedesignphotography/
 facebook_handle               : drakedesignphotography
 ```
 
-### Candidate Pair Generation
+## Candidate Pair Generation
 
 Next, we generate **candidate record pairs** for **entity matching**.  
 In theory, generating all possible pairs in a dataset with ~33,000 records would produce:
 
-$$
-\frac{N(N - 1)}{2}
-=
-\frac{33{,}000 \times 32{,}999}{2}
-\approx 544{,}483{,}500 \text{ pairs}
-$$
+```text
+N(N - 1) / 2
+= 33,000 × 32,999 / 2
+≈ 544,483,500 pairs
+````
 
 This is already extremely expensive, so we apply a **blocking technique**. Using the previously derived **blocking key** `name_core`, we generate pairs only within records that share the same `name_core`, instead of comparing every record with every other record. For example, suppose the following records exist:
 
@@ -696,7 +688,6 @@ For the block `name_core = "industowers"` (3 records), the generated **candidate
 No pairs are generated between the two different **blocks** (e.g., record 1 is never compared with record 5). This strategy avoids comparing records that clearly have nothing in common (e.g., "180 Chicago Church" vs. "Indus Towers"), preventing a **combinatorial explosion** and keeping **computational requirements** manageable. At the end, the **candidates DataFrame** will contain two copies of all previously selected and processed relevant columns, one set for each record in the pair (aliased as `a` and `b`). Each row in this DataFrame corresponds to a single **candidate pair**, enabling direct **field-by-field comparison** between the two entities during the **scoring phase**.
 
 ```text
-
 DataFrame schema for candidate record pairs generated within each block:
 root
  |-- name_core: string (nullable = true)
@@ -764,15 +755,13 @@ root
  |-- linkedin_handle: string (nullable = true)
  |-- instagram_handle: string (nullable = true)
  |-- twitter_handle: string (nullable = true)
-```
 
-```text
 DataFrame size:
 Rows: 111,022
 Columns: 65
 ```
 
-### Pairwise Matching Score Computation
+## Pairwise Matching Score Computation
 
 Next, we compute a **matching score** between **candidate record pairs**. For each pair, every column is compared only if both records contain **non-null values**. If the values in the same column are **identical**, one point is added to the total **matching score**.
 
@@ -838,18 +827,15 @@ This leaves 19 **comparable** (non-null on both sides) columns, of which:
 
 Therefore, the final **matching score** is calculated as:
 
-$$
-\frac{\text{number of matching columns}}{\text{number of comparable columns}}
-=
-\frac{17}{19}
-=
-0.89
-$$
+```text
+number of matching columns / number of comparable columns
+= 17 / 19
+= 0.89
+````
 
 The process continues iteratively for each generated pair, and the computed score is assigned to every **candidate pair**. Next, we can observe a chart showing the **distribution of matching scores** across all candidate pairs, as well as a chart illustrating the **distribution of the number of valid (non-null) columns** used for matching across pairs.
 
 ```text
-
 Candidate pairs and their scores:
 ---------- PAIR 1/10 ----------
 16 columns were compared and match at 100.0%.
@@ -1072,7 +1058,7 @@ b.instagram_handle              : 180chicagochurch
 
 ![Output 2](outputs/output_002.png)
 
-### Graph-Based Clustering
+## Graph-Based Clustering
 
 In the **clustering stage**, the objective is to group all previously defined pairs into clusters representing the same **real-world entity**.  
 
@@ -1116,14 +1102,7 @@ Once all candidate pairs have been scored, we retain only those whose similarity
 
 At the end, by defining a **graph**, we can cluster records using **connected components**. Each valid pair is treated as an **edge** in the graph, where the two records are represented as **nodes** (`src` and `dst`), and the edge indicates a strong similarity relationship. All records that are connected through one or more high-scoring edges, either directly or transitively, are assigned to the same `cluster_id`. Thus, in our example, **two clusters** will be formed: the first cluster consisting of nodes **1, 2, 3, and 4**, and the second cluster consisting of nodes **5, 6, and 7**.
 
-```text
-/usr/local/lib/python3.12/dist-packages/pyspark/sql/dataframe.py:168: UserWarning: DataFrame.sql_ctx is an internal property, and will be removed in future releases. Use DataFrame.sparkSession instead.
-  warnings.warn(
-/usr/local/lib/python3.12/dist-packages/pyspark/sql/dataframe.py:147: UserWarning: DataFrame constructor is internal. Do not directly use it.
-  warnings.warn("DataFrame constructor is internal. Do not directly use it.")
-```
-
-### Cluster Analysis and Visual Validation
+## Cluster Analysis and Visual Validation
 
 Finally, to better understand the outcome of the **clustering stage**, the following calculations and summaries are displayed:
 
@@ -1143,10 +1122,10 @@ Total number of unique clusters: 5,505
 ![Output 3](outputs/output_003.png)
 
 ```text
-TOP CLUSTER SIZES:
 ```
 
 ```text
+TOP CLUSTER SIZES:
 +----------+--------------------+----+
 |id        |name_core           |size|
 +----------+--------------------+----+
@@ -1161,13 +1140,11 @@ TOP CLUSTER SIZES:
 |8589935024|freshburger         |37  |
 |8589935358|recovera            |37  |
 +----------+--------------------+----+
-
-
-
-CLUSTER 1/10 | ID: 8589935423 | SIZE: 56 | NAME_CORE: equmeniakyrkan
 ```
 
 ```text
+CLUSTER 1/10 | ID: 8589935423 | SIZE: 56 | NAME_CORE: equmeniakyrkan
+
 ------- RECORD 1 -------
 company_name             : Töreboda Missionsförsamling
 website_domain           : equmeniakyrkan.se
@@ -1388,13 +1365,11 @@ locations                : SE, Sweden, Västra Götaland County, Skara kommun, 5
 company_name             : Rambergskyrkan
 website_domain           : equmeniakyrkan.se
 locations                : SE, Sweden, Västra Götaland County, Gothenburg, 411 10, , , 57.7072326, 11.9670171
-
-
-
-CLUSTER 2/10 | ID: 8589934863 | SIZE: 45 | NAME_CORE: industowers
 ```
 
 ```text
+CLUSTER 2/10 | ID: 8589934863 | SIZE: 45 | NAME_CORE: industowers
+
 ------- RECORD 1 -------
 company_name             : Indus Towers
 website_domain           : industowers.com
@@ -1570,13 +1545,11 @@ locations                : IN, India, Uttar Pradesh, Ghaziabad, 201015, Delhi Ea
 company_name             : Indus Towers
 website_domain           : industowers.com
 locations                : IN, India, Maharashtra, Mumbai, 400064, New Link Road, 11, 19.191342799999997, 72.8346719
-
-
-
-CLUSTER 3/10 | ID: 8589934842 | SIZE: 44 | NAME_CORE: saharvosk
 ```
 
 ```text
+CLUSTER 3/10 | ID: 8589934842 | SIZE: 44 | NAME_CORE: saharvosk
+
 ------- RECORD 1 -------
 website_domain           : saharvosk.ru
 locations                : RU, Russia, Bashkortostan, Oktyabrsky, , улица Чапаева, 2, 54.4870648, 53.45951050000001
@@ -1752,13 +1725,11 @@ locations                : RU, Russia, Moscow Oblast, Korolyov, 141078, Октя
 company_name             : Sahar & Vosk
 website_domain           : saharvosk.ru
 locations                : RU, Russia, Kaliningrad, Kaliningrad, 236000, Yuri Gagarin Street, 16, 54.719885999999995, 20.5448919
-
-
-
-CLUSTER 4/10 | ID: 8589935033 | SIZE: 42 | NAME_CORE: meijimura
 ```
 
 ```text
+CLUSTER 4/10 | ID: 8589935033 | SIZE: 42 | NAME_CORE: meijimura
+
 ------- RECORD 1 -------
 company_name             : Gourmet cafe
 website_domain           : meijimura.com
@@ -1925,13 +1896,11 @@ locations                : JP, Japan, Aichi Prefecture, Inuyama, 484-0000, Munic
 company_name             : Mie Prefectural Office
 website_domain           : meijimura.com
 locations                : JP, Japan, Aichi Prefecture, Inuyama, 484-0000, Municipal Road Route Fuji Honsen, 1, 35.3408973, 136.9891446
-
-
-
-CLUSTER 5/10 | ID: 8589935500 | SIZE: 40 | NAME_CORE: airamanah
 ```
 
 ```text
+CLUSTER 5/10 | ID: 8589935500 | SIZE: 40 | NAME_CORE: airamanah
+
 ------- RECORD 1 -------
 company_name             : Air Amanah Semarang
 website_domain           : airamanah.com
@@ -2091,13 +2060,11 @@ locations                : ID, Indonesia, South Kalimantan, Tanjung, 71552, , , 
 company_name             : Air Amanah Solo Raya
 website_domain           : airamanah.com
 locations                : ID, Indonesia, Central Java, Surakarta, 57143, , , -7.5699639, 110.7968624
-
-
-
-CLUSTER 6/10 | ID: 8589935348 | SIZE: 39 | NAME_CORE: chatime
 ```
 
 ```text
+CLUSTER 6/10 | ID: 8589935348 | SIZE: 39 | NAME_CORE: chatime
+
 ------- RECORD 1 -------
 company_name             : Chatime
 website_domain           : chatime.com.ph
@@ -2253,13 +2220,11 @@ locations                : PH, Philippines, Metro Manila, Parañaque, 1700, Pres
 company_name             : Chatime
 website_domain           : chatime.com.ph
 locations                : PH, Philippines, Calabarzon, Biñan, 4024, South Luzon Expressway, KM 35, 14.311988799999998, 121.07175879999998
-
-
-
-CLUSTER 7/10 | ID: 8589935697 | SIZE: 39 | NAME_CORE: newcare
 ```
 
 ```text
+CLUSTER 7/10 | ID: 8589935697 | SIZE: 39 | NAME_CORE: newcare
+
 ------- RECORD 1 -------
 company_name             : newcare parc Hamburg
 website_domain           : newcare.de
@@ -2416,13 +2381,11 @@ locations                : DE, Germany, Bavaria, Nuremberg, 90441, Hansastraße,
 company_name             : newcare parc Schwanewede
 website_domain           : newcare.de
 locations                : DE, Germany, Lower Saxony, Schwanewede, 28790, Damm, 45, 53.2429211, 8.5902609
-
-
-
-CLUSTER 8/10 | ID: 8589934952 | SIZE: 38 | NAME_CORE: recommendedbyroberto
 ```
 
 ```text
+CLUSTER 8/10 | ID: 8589934952 | SIZE: 38 | NAME_CORE: recommendedbyroberto
+
 ------- RECORD 1 -------
 company_name             : La Mer Restaurant
 website_domain           : recommendedbyroberto.com
@@ -2573,13 +2536,11 @@ locations                : BG, Bulgaria, Blagoevgrad, Bansko, 2770, Knyaz Boris,
 company_name             : Bendida Central
 website_domain           : recommendedbyroberto.com
 locations                : BG, Bulgaria, Pazardzhik, Velingrad, 4600, , , 42.02833760000001, 23.9910321
-
-
-
-CLUSTER 9/10 | ID: 8589935024 | SIZE: 37 | NAME_CORE: freshburger
 ```
 
 ```text
+CLUSTER 9/10 | ID: 8589935024 | SIZE: 37 | NAME_CORE: freshburger
+
 ------- RECORD 1 -------
 company_name             : Fresh Burger
 website_domain           : freshburger.com.sa
@@ -2726,17 +2687,11 @@ locations                : SA, Saudi Arabia, Ḥa'il Province, Ha'il, 55427, Kin
 company_name             : Fresh Burger
 website_domain           : freshburger.com.sa
 locations                : SA, Saudi Arabia, Ḥa'il Province, Ha'il, 55431, King Abdullah bin Abdulaziz Road, , 27.473768499999995, 41.6761
+```
 
-
-
+```text
 CLUSTER 10/10 | ID: 8589935358 | SIZE: 37 | NAME_CORE: recovera
-```
 
-```text
-[Stage 749:============================>                            (2 + 2) / 4]
-```
-
-```text
 ------- RECORD 1 -------
 company_name             : Recovera Využití zdrojů
 website_domain           : recovera.cz
