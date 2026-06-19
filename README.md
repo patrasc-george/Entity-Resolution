@@ -1122,9 +1122,6 @@ Total number of unique clusters: 5,505
 ![Output 3](outputs/output_003.png)
 
 ```text
-```
-
-```text
 TOP CLUSTER SIZES:
 +----------+--------------------+----+
 |id        |name_core           |size|
